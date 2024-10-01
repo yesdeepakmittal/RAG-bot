@@ -1,20 +1,22 @@
-import chromadb
 import logging
 
-chroma_client = chromadb.Client()
-collection = chroma_client.get_collection(name="document_collection")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def query_chunks(query_text: str, n_results: int = 5):
+
+def query_chunks_es(es_client, index_name, query_embedding, n_results=5):
     """
-    Query ChromaDB to retrieve the top N relevant chunks.
+    Query Elasticsearch to retrieve the top N relevant chunks based on the embedding.
 
     Parameters
     ----------
-    query_text : str
-        The text to query against the document collection.
+    es_client : Elasticsearch
+        The Elasticsearch client instance.
+    index_name : str
+        The name of the Elasticsearch index.
+    query_embedding : list
+        The embedding of the query text.
     n_results : int, optional
         The number of top relevant chunks to retrieve (default is 5).
 
@@ -25,9 +27,22 @@ def query_chunks(query_text: str, n_results: int = 5):
         None otherwise.
     """
     try:
-        results = collection.query(query_texts=[query_text], n_results=n_results)
-        logger.info(f"Retrieved {len(results['documents'])} results for query: {query_text}")
+        body = {
+            "size": n_results,
+            "_source": ["text_chunk", "page_num", "document_name"],
+            "query": {
+                "script_score": {
+                    "query": {"match_all": {}},
+                    "script": {
+                        "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                        "params": {"query_vector": query_embedding}
+                    }
+                }
+            }
+        }
+        results = es_client.search(index=index_name, body=body)
+        logger.info(f"Retrieved {len(results['hits']['hits'])} results from Elasticsearch")
         return results
     except Exception as e:
-        logger.error(f"Failed to query ChromaDB: {str(e)}")
+        logger.error(f"Failed to query Elasticsearch: {str(e)}")
         return None

@@ -1,49 +1,48 @@
 import os
 import logging
-import chromadb
 import openai
-import chromadb.utils.embedding_functions as embedding_functions
+import yaml
 
 from src.chunking.chunking import get_individual_chunk, get_pdf_chunks
 from src.embedding.embedder import get_embedding
 from src.parsing.parser import get_document_text
-from src.indexing.ingestion import ingest_chunk
+from src.indexing.ingestion import ingest_chunk_es
+from src.retrieval.retriever import query_chunks_es
+
+from elasticsearch import Elasticsearch
+from dotenv import load_dotenv
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-chroma_client = chromadb.Client()
-
-openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-    api_key=os.environ["OPENAI_API_KEY"], model_name="text-embedding-ada-002"
+client = Elasticsearch(
+    cloud_id=os.getenv("ES_CLOUD_ID"),
+    api_key=os.getenv("ES_API_KEY"),
 )
 
-collection = chroma_client.get_or_create_collection(
-    name="document_collection", embedding_function=openai_ef
-)
+index_name = os.getenv("ES_INDEX_NAME")
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-openai.api_key = os.environ["OPENAI_API_KEY"]
 
-def query_chromadb(query_text, n_results=5):
+def load_prompt_from_yaml(file_path):
     """
-    Query ChromaDB and return relevant documents.
+    Load the prompt template from a YAML file.
 
     Parameters
     ----------
-    query_text : str
-        The text to query the database with.
-    n_results : int, optional
-        The number of results to return (default is 5).
+    file_path : str
+        The path to the YAML file containing the prompt template.
 
     Returns
     -------
-    dict
-        A dictionary containing the query results.
+    str
+        The prompt template.
     """
-    logger.info(f"Querying ChromaDB with text: {query_text}")
-    results = collection.query(query_texts=[query_text], n_results=n_results)
-    logger.info(f"Query results: {results}")
-    return results
+    with open(file_path, 'r') as file:
+        prompt_config = yaml.safe_load(file)
+    return prompt_config['prompt']
+
 
 def generate_response_with_gpt(documents, query_text):
     """
@@ -62,7 +61,9 @@ def generate_response_with_gpt(documents, query_text):
         The generated response text.
     """
     context = "\n\n".join(documents)
-    prompt = f"Use the following documents to answer the query:\n\n{context}\n\nQuery: {query_text}\nAnswer:"
+    prompt_template = load_prompt_from_yaml('configs/prompt.yaml')
+    prompt = prompt_template.format(context=context, query=query_text)
+    logger.info(f"Generated prompt: {prompt}")
 
     logger.info("Generating response with GPT-3.5-turbo-instruct model.")
     response = openai.Completion.create(
@@ -78,6 +79,7 @@ def generate_response_with_gpt(documents, query_text):
     return generated_text
 
 if __name__ == "__main__":
+    
     ingest_flag = False  
 
     PDF_DIR = "bin/finance docs"
@@ -102,7 +104,7 @@ if __name__ == "__main__":
                         "document_name": doc_path.split("/")[-1],
                     }
 
-                    ingest_chunk(chunk["sentence_chunk"], emb, chunk_id, metadata)
+                    ingest_chunk_es(client, index_name, chunk["sentence_chunk"], emb, chunk_id, metadata)
                     logger.info(f"Ingested chunk {chunk_id} with metadata {metadata}")
 
                 logger.info("****************************")
@@ -110,13 +112,13 @@ if __name__ == "__main__":
 
         logger.info("Ingestion complete!")
 
-    
     query_text = "Sabka Saath, Sabka Vikas"
-    results = query_chromadb(query_text, n_results=5)
+    query_embedding = get_embedding(query_text)
 
-    documents = [" ".join(result) for result in results['documents']]
-    
+    results = query_chunks_es(client, index_name, query_embedding, n_results=5)
+
+    documents = [hit["_source"]["text_chunk"] for hit in results["hits"]["hits"]]
     response = generate_response_with_gpt(documents, query_text)
-    
+
     print("GPT-3.5 Response:")
     print(response)
