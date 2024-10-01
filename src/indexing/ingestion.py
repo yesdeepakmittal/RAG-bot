@@ -1,20 +1,18 @@
-import chromadb
 import logging
-
-chroma_client = chromadb.Client()
-
-# Use OpenAI embeddings with 1536-dimensional vectors
-collection = chroma_client.create_collection(name="document_collection")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def ingest_chunk(chunk, embedding, chunk_id, metadata):
+def ingest_chunk_es(client, index_name, chunk, embedding, chunk_id, metadata):
     """
-    Ingest a chunk of text into the ChromaDB collection.
+    Ingest a chunk of text into the Elasticsearch index.
 
     Parameters
     ----------
+    client : Elasticsearch
+        The Elasticsearch client instance.
+    index_name : str
+        The name of the Elasticsearch index.
     chunk : str
         The text chunk to be ingested.
     embedding : list of float
@@ -29,12 +27,13 @@ def ingest_chunk(chunk, embedding, chunk_id, metadata):
     None
     """
     try:
-        collection.add(
-            documents=[chunk],
-            embeddings=[embedding],
-            metadatas=[metadata],
-            ids=[chunk_id]
-        )
-        logger.info(f"Ingested chunk {chunk_id} into collection")
+        doc = {
+            "text_chunk": chunk,
+            "embedding": embedding,
+            "page_num": metadata["page_num"],
+            "document_name": metadata["document_name"]
+        }
+        client.index(index=index_name, id=chunk_id, body=doc)
+        logger.info(f"Ingested chunk {chunk_id} into Elasticsearch index {index_name}")
     except Exception as e:
-        logger.error(f"Failed to ingest chunk {chunk_id}: {e}")
+        logger.error(f"Failed to ingest chunk {chunk_id} into Elasticsearch: {str(e)}")

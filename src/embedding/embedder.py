@@ -1,12 +1,49 @@
 import os
 import openai
+import time
 import logging
+import tiktoken
+from tenacity import retry, wait_exponential, stop_after_attempt
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# https://learn.microsoft.com/en-us/answers/questions/1188074/text-embedding-ada-002-token-context-length
+MAX_TOKENS = 8191
+
+def truncate_text(text, model):
+    """
+    Truncate text if token count exceeds the maximum allowed tokens.
+
+    Parameters
+    ----------
+    text : str
+        The input text to truncate.
+    model : str
+        The model to be used for generating the embedding.
+
+    Returns
+    -------
+    str
+        The truncated text if token count exceeds MAX_TOKENS, else the original text.
+    """
+
+    encoding = tiktoken.encoding_for_model(model)
+    tokens = encoding.encode(text)
+
+    if len(tokens) > MAX_TOKENS:
+        logger.warning(f"Text exceeds {MAX_TOKENS} tokens. Truncating.")
+
+        truncated_tokens = tokens[:MAX_TOKENS]
+        return encoding.decode(truncated_tokens)
+    
+    return text
+
+
+@retry(wait=wait_exponential(multiplier=1, min=4, max=60), stop=stop_after_attempt(5))
 def get_embedding(text, model="text-embedding-ada-002"):
     """
     Get the embedding for a given text using the specified model.
@@ -22,18 +59,25 @@ def get_embedding(text, model="text-embedding-ada-002"):
     -------
     list
         A list representing the embedding of the input text.
-
-    Raises
-    ------
-    Exception
-        If there is an error in retrieving the embedding.
     """
     logger.info("Requesting embedding for text: %s", text)
+
+    truncated_text = truncate_text(text, model)
+
     try:
-        response = openai.Embedding.create(input=text, model=model)
+        response = openai.Embedding.create(input=truncated_text, model=model)
         embedding = response["data"][0]["embedding"]
         logger.info("Successfully retrieved embedding")
         return embedding
+    
+    except openai.error.RateLimitError as e:
+        logger.warning(f"Rate limit exceeded: {e}. Retrying...")
+        raise 
+
+    except openai.error.OpenAIError as e:
+        logger.error(f"OpenAI error occurred: {e}")
+        raise  
+
     except Exception as e:
-        logger.error("Error retrieving embedding: %s", e)
+        logger.error(f"Unexpected error: {e}")
         raise
