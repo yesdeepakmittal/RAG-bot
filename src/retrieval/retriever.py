@@ -33,7 +33,7 @@ def query_chunks_es(es_client, query_embedding, n_results=5):
     try:
         body = {
             "size": n_results,
-            "_source": ["text_chunk", "page_num", "document_name"],
+            "_source": ["chunk_text", "page_num", "document_name"],
             "query": {
                 "script_score": {
                     "query": {"match_all": {}},

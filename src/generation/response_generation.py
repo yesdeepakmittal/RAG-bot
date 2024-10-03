@@ -73,7 +73,7 @@ def generate_response(client, query_text):
 
     results = query_chunks_es(client, query_embedding, n_results=5)
 
-    documents = [hit["_source"]["text_chunk"] for hit in results["hits"]["hits"]]
+    documents = [hit["_source"]["chunk_text"] for hit in results["hits"]["hits"]]
     response = generate_response_with_gpt(documents, query_text)
 
     logger.info(f"Generated response: {response}")
