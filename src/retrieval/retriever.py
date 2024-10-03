@@ -1,11 +1,17 @@
 import logging
-
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+from dotenv import load_dotenv
 
-def query_chunks_es(es_client, index_name, query_embedding, n_results=5):
+load_dotenv()
+
+index_name = os.getenv("ES_INDEX_NAME")
+
+
+def query_chunks_es(es_client, query_embedding, n_results=5):
     """
     Query Elasticsearch to retrieve the top N relevant chunks based on the embedding.
 
@@ -13,8 +19,6 @@ def query_chunks_es(es_client, index_name, query_embedding, n_results=5):
     ----------
     es_client : Elasticsearch
         The Elasticsearch client instance.
-    index_name : str
-        The name of the Elasticsearch index.
     query_embedding : list
         The embedding of the query text.
     n_results : int, optional
@@ -35,10 +39,10 @@ def query_chunks_es(es_client, index_name, query_embedding, n_results=5):
                     "query": {"match_all": {}},
                     "script": {
                         "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-                        "params": {"query_vector": query_embedding}
-                    }
+                        "params": {"query_vector": query_embedding},
+                    },
                 }
-            }
+            },
         }
         results = es_client.search(index=index_name, body=body)
         logger.info(f"Retrieved {len(results['hits']['hits'])} results from Elasticsearch")

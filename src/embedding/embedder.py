@@ -1,18 +1,23 @@
-import os
-import openai
-import time
 import logging
-import tiktoken
-from tenacity import retry, wait_exponential, stop_after_attempt
+import os
+import time
 
+import openai
+import tiktoken
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # https://learn.microsoft.com/en-us/answers/questions/1188074/text-embedding-ada-002-token-context-length
 MAX_TOKENS = 8191
+
 
 def truncate_text(text, model):
     """
@@ -39,7 +44,7 @@ def truncate_text(text, model):
 
         truncated_tokens = tokens[:MAX_TOKENS]
         return encoding.decode(truncated_tokens)
-    
+
     return text
 
 
@@ -69,14 +74,14 @@ def get_embedding(text, model="text-embedding-ada-002"):
         embedding = response["data"][0]["embedding"]
         logger.info("Successfully retrieved embedding")
         return embedding
-    
+
     except openai.error.RateLimitError as e:
         logger.warning(f"Rate limit exceeded: {e}. Retrying...")
-        raise 
+        raise
 
     except openai.error.OpenAIError as e:
         logger.error(f"OpenAI error occurred: {e}")
-        raise  
+        raise
 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")

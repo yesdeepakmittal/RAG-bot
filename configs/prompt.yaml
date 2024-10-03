@@ -9,7 +9,7 @@ prompt: |
     Context:
     {context}
 
-    Query: 
+    Query:
     {query}
 
     Note:
