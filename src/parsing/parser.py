@@ -1,10 +1,16 @@
-import os
-import fitz  
 import logging
+
+import fitz
+
 from utils.utils import num_tokens_from_string, text_formatter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def get_document_text(doc_path: str):
     """
