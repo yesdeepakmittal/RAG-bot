@@ -48,7 +48,6 @@ def generate_response_with_gpt(documents, query_text):
         n=1,
     )
     generated_text = response["choices"][0]["text"].strip()
-    logger.info(f"Generated response: {generated_text}")
     return generated_text
 
 
@@ -71,9 +70,24 @@ def generate_response(client, query_text):
 
     query_embedding = get_embedding(query_text)
 
-    results = query_chunks_es(client, query_embedding, n_results=5)
+    results = query_chunks_es(client, query_embedding)
+    # logger.info(f"Elasticsearch results: {results}")
 
-    documents = [hit["_source"]["chunk_text"] for hit in results["hits"]["hits"]]
+    total_tokens = 0
+    documents = []
+
+    for hit in results["hits"]["hits"]:
+        chunk_text = hit["_source"]["chunk_text"]
+        token_count = hit["_source"]["chunk_token_count"]
+
+        if total_tokens + token_count > 3000:
+            logger.info(f"Total context tokens: {total_tokens}")
+            logger.info(f"total number of chunks considered: {len(documents)}")
+            break
+
+        documents.append(chunk_text)
+        total_tokens += token_count
+
     response = generate_response_with_gpt(documents, query_text)
 
     logger.info(f"Generated response: {response}")

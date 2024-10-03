@@ -11,18 +11,18 @@ load_dotenv()
 index_name = os.getenv("ES_INDEX_NAME")
 
 
-def query_chunks_es(es_client, query_embedding, n_results=5):
+def query_chunks_es(client, query_embedding, n_results=50):
     """
     Query Elasticsearch to retrieve the top N relevant chunks based on the embedding.
 
     Parameters
     ----------
-    es_client : Elasticsearch
+    client : Elasticsearch
         The Elasticsearch client instance.
     query_embedding : list
         The embedding of the query text.
     n_results : int, optional
-        The number of top relevant chunks to retrieve (default is 5).
+        The number of top relevant chunks to retrieve (default is 50).
 
     Returns
     -------
@@ -33,7 +33,7 @@ def query_chunks_es(es_client, query_embedding, n_results=5):
     try:
         body = {
             "size": n_results,
-            "_source": ["chunk_text", "page_num", "document_name"],
+            "_source": ["chunk_text", "page_num", "document_name", "chunk_token_count"],
             "query": {
                 "script_score": {
                     "query": {"match_all": {}},
@@ -44,7 +44,7 @@ def query_chunks_es(es_client, query_embedding, n_results=5):
                 }
             },
         }
-        results = es_client.search(index=index_name, body=body)
+        results = client.search(index=index_name, body=body)
         logger.info(f"Retrieved {len(results['hits']['hits'])} results from Elasticsearch")
         return results
     except Exception as e:
